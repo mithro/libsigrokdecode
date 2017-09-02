@@ -127,14 +127,14 @@ class Decoder(srd.Decoder):
     )
     annotation_rows = (
         ('bits-out', 'Output bits', (Ann.BITS_OUT,)),
-        ('bits-in', 'Input bits', (Ann.BITS_IN,)),
         ('slots-out-raw', 'Output numbers', (Ann.SLOT_OUT_RAW,)),
-        ('slots-in-raw', 'Input numbers', (Ann.SLOT_IN_RAW,)),
         ('slots-out', 'Output slots', (
             Ann.SLOT_OUT_TAG, Ann.SLOT_OUT_ADDR, Ann.SLOT_OUT_DATA,
             Ann.SLOT_OUT_03, Ann.SLOT_OUT_04, Ann.SLOT_OUT_05, Ann.SLOT_OUT_06,
             Ann.SLOT_OUT_07, Ann.SLOT_OUT_08, Ann.SLOT_OUT_09, Ann.SLOT_OUT_10,
             Ann.SLOT_OUT_11, Ann.SLOT_OUT_IO,)),
+        ('bits-in', 'Input bits', (Ann.BITS_IN,)),
+        ('slots-in-raw', 'Input numbers', (Ann.SLOT_IN_RAW,)),
         ('slots-in', 'Input slots', (
             Ann.SLOT_IN_TAG, Ann.SLOT_IN_ADDR, Ann.SLOT_IN_DATA,
             Ann.SLOT_IN_03, Ann.SLOT_IN_04, Ann.SLOT_IN_05, Ann.SLOT_IN_06,
