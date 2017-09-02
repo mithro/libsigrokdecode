@@ -46,16 +46,16 @@ class Pins:
 class Ann:
     (
         BITS_OUT, BITS_IN,
-        SLOT_OUT_TAG, SLOT_OUT_ADDR, SLOT_OUT_DATA,
+        SLOT_OUT_RAW, SLOT_OUT_TAG, SLOT_OUT_ADDR, SLOT_OUT_DATA,
         SLOT_OUT_03, SLOT_OUT_04, SLOT_OUT_05, SLOT_OUT_06,
         SLOT_OUT_07, SLOT_OUT_08, SLOT_OUT_09, SLOT_OUT_10,
         SLOT_OUT_11, SLOT_OUT_IO,
-        SLOT_IN_TAG, SLOT_IN_ADDR, SLOT_IN_DATA,
+        SLOT_IN_RAW, SLOT_IN_TAG, SLOT_IN_ADDR, SLOT_IN_DATA,
         SLOT_IN_03, SLOT_IN_04, SLOT_IN_05, SLOT_IN_06,
         SLOT_IN_07, SLOT_IN_08, SLOT_IN_09, SLOT_IN_10,
         SLOT_IN_11, SLOT_IN_IO,
         WARN, ERROR,
-    ) = range(30)
+    ) = range(32)
 
 class Decoder(srd.Decoder):
     api_version = 3
@@ -81,6 +81,7 @@ class Decoder(srd.Decoder):
     annotations = (
         ('bits-out', 'Output bits'),
         ('bits-in', 'Input bits'),
+        ('slot-out-raw', 'Output raw value'),
         ('slot-out-tag', 'Output TAG'),
         ('slot-out-cmd-addr', 'Output command address'),
         ('slot-out-cmd-data', 'Output command data'),
@@ -94,6 +95,7 @@ class Decoder(srd.Decoder):
         ('slot-out-10', 'Output slot 10'),
         ('slot-out-11', 'Output slot 11'),
         ('slot-out-io-ctrl', 'Output I/O control'),
+        ('slot-in-raw', 'Input raw value'),
         ('slot-in-tag', 'Input TAG'),
         ('slot-in-sts-addr', 'Input status address'),
         ('slot-in-sts-data', 'Input status data'),
@@ -118,6 +120,8 @@ class Decoder(srd.Decoder):
     annotation_rows = (
         ('bits-out', 'Output bits', (Ann.BITS_OUT,)),
         ('bits-in', 'Input bits', (Ann.BITS_IN,)),
+        ('slots-out-raw', 'Output numbers', (Ann.SLOT_OUT_RAW,)),
+        ('slots-in-raw', 'Input numbers', (Ann.SLOT_IN_RAW,)),
         ('slots-out', 'Output slots', (
             Ann.SLOT_OUT_TAG, Ann.SLOT_OUT_ADDR, Ann.SLOT_OUT_DATA,
             Ann.SLOT_OUT_03, Ann.SLOT_OUT_04, Ann.SLOT_OUT_05, Ann.SLOT_OUT_06,
@@ -139,9 +143,15 @@ class Decoder(srd.Decoder):
         #   filtered by TAG bits or all observed? in/out
     )
 
-    def putx(self, ss, es, data):
+    def putx(self, ss, es, cls, data):
         """Put a (graphical) annotation."""
-        self.put(ss, es, self.out_ann, data)
+        self.put(ss, es, self.out_ann, [cls, data])
+
+    def putf(self, frombit, bitcount, cls, data):
+        """Put a (graphical) annotation for a frame's bit field."""
+        ss = self.frame_ss_list[frombit]
+        es = self.frame_ss_list[frombit + bitcount]
+        self.putx(ss, es, cls, data)
 
     # TODO Put Python and binary annotations.
 
@@ -152,6 +162,9 @@ class Decoder(srd.Decoder):
         self.frame_ss_list = None
         self.frame_slot_lens = [0, 16] + [16 + 20 * i for i in range(1, 13)]
         self.frame_total_bits = 256
+        self.handle_slots = {
+            0: self.handle_slot_00,
+        }
 
     def start(self):
         # TODO self.out_python = self.register(srd.OUTPUT_PYTHON)
@@ -182,6 +195,13 @@ class Decoder(srd.Decoder):
         text = "{{:0{:d}x}}".format(digits).format(value)
         return text
 
+    def get_bit_field(self, data, size, off, count):
+        shift = size - off - count
+        data >>= shift
+        mask = (1 << count) - 1
+        data &= mask
+        return data
+
     def start_frame(self, ss):
         """Mark the start of a frame."""
         self.frame_ss_list = [ ss, ]
@@ -189,11 +209,75 @@ class Decoder(srd.Decoder):
         self.frame_bits_in = []
         self.frame_slot_data_out = []
         self.frame_slot_data_in = []
+        self.have_slots = {
+            True: None,
+            False: None,
+        }
 
-    def handle_slot(self, idx, ss, es, data_out, data_in):
+    def handle_slot_dummy(self, slotidx, bitidx, bitcount, is_out, data):
+        """Handle slot x, default/fallback handler."""
+        if not self.have_slots[is_out]:
+            return
+        if not self.have_slots[is_out][slotidx]:
+            return
+        text = self.int_to_nibble_text(data, bitcount);
+        anncls = Ann.SLOT_OUT_TAG if is_out else Ann.SLOT_IN_TAG
+        self.putf(bitidx, bitcount, anncls + slotidx, [text])
+
+    def handle_slot_00(self, slotidx, bitidx, bitcount, is_out, data):
+        """Handle slot 0, TAG."""
+        slotpos = self.frame_slot_lens[slotidx]
+        fieldoff = 0
+        anncls = Ann.SLOT_OUT_TAG if is_out else Ann.SLOT_IN_TAG
+
+        fieldlen = 1
+        ready = self.get_bit_field(data, bitcount, fieldoff, fieldlen)
+        text = [ 'READY: 1', 'READY', 'RDY', 'R', ] if ready else [ 'ready: 0', 'rdy', '-', ]
+        self.putf(slotpos + fieldoff, fieldlen, anncls, text)
+        fieldoff += fieldlen
+
+        fieldlen = 12
+        valid = self.get_bit_field(data, bitcount, fieldoff, fieldlen)
+        text = [ 'VALID: {:3x}'.format(valid), '{:3x}'.format(valid), ]
+        self.putf(slotpos + fieldoff, fieldlen, anncls, text)
+        have_slots = [ True, ] + [ False, ] * 12
+        for idx in range(12):
+            have_slots[idx + 1] = bool(valid & (1 << (11 - idx)))
+        self.have_slots[is_out] = have_slots
+        fieldoff += fieldlen
+
+        fieldlen = 1
+        rsv = self.get_bit_field(data, bitcount, fieldoff, fieldlen)
+        if rsv == 0:
+            text = [ 'RSV: 0', 'RSV', '0', ]
+            self.putf(slotpos + fieldoff, fieldlen, anncls, text)
+        else:
+            text = [ 'rsv: 1', 'rsv', '1', ]
+            self.putf(slotpos + fieldoff, fieldlen, anncls, text)
+            text = [ 'reserved bit error', 'rsv error', 'rsv', ]
+            self.putf(slotpos + fieldoff, fieldlen, Ann.ERROR, text)
+        fieldoff += fieldlen
+
+        fieldlen = 2
+        codec = self.get_bit_field(data, bitcount, fieldoff, fieldlen)
+        text = [ 'CODEC: {:1x}'.format(codec), '{:1x}'.format(codec), ]
+        self.putf(slotpos + fieldoff, fieldlen, anncls, text)
+        fieldoff += fieldlen
+
+    # TODO implement other slots
+    # - 1: cmd/status addr
+    # - 2: cmd/status data
+    # - 3-11: audio out/in
+    # - 12: io control/status
+
+    def handle_slot(self, slotidx, data_out, data_in):
         """Process a received slot of a frame."""
-        # TODO
-        pass
+        func = self.handle_slots.get(slotidx, self.handle_slot_dummy)
+        bitidx = self.frame_slot_lens[slotidx]
+        bitcount = self.frame_slot_lens[slotidx + 1] - bitidx
+        func(slotidx, bitidx, bitcount, True, data_out)
+        func(slotidx, bitidx, bitcount, False, data_in)
+        return
 
     def handle_bits(self, ss, es, bit_out, bit_in):
         """Process a received pair of bits."""
@@ -201,8 +285,8 @@ class Decoder(srd.Decoder):
         # Emit the bits' annotations. Only interpret the data when we
         # are in a frame (have seen the start of the frame, and don't
         # exceed the expected number of bits in a frame).
-        self.putx(ss, es, [Ann.BITS_OUT, ["{:d}".format(bit_out)]])
-        self.putx(ss, es, [Ann.BITS_IN, ["{:d}".format(bit_in)]])
+        self.putx(ss, es, Ann.BITS_OUT, ["{:d}".format(bit_out)])
+        self.putx(ss, es, Ann.BITS_IN, ["{:d}".format(bit_in)])
         if self.frame_ss_list is None:
             return
         if len(self.frame_bits_out) >= self.frame_total_bits:
@@ -219,29 +303,31 @@ class Decoder(srd.Decoder):
         if have_len != want_len:
             return
 
-        # Convert bits to integer values. Emit simple annotations for
-        # the integer values, until upper layer decode stages will be
-        # implemented.
+        # Convert bits to integer values. This shall simplify extraction
+        # of bit fields in multiple other locations.
         prev_len = self.frame_slot_lens[slot_idx]
-        slot_len = have_len - prev_len
-        slot_ss = self.frame_ss_list[prev_len]
-        slot_es = self.frame_ss_list[have_len]
 
         slot_bits = self.frame_bits_out[prev_len:]
         slot_data = self.bits_to_int(slot_bits)
-        slot_text = self.int_to_nibble_text(slot_data, slot_len)
-        self.putx(slot_ss, slot_es, [Ann.SLOT_OUT_TAG + slot_idx, [slot_text]])
         self.frame_slot_data_out.append(slot_data)
         slot_data_out = slot_data
 
         slot_bits = self.frame_bits_in[prev_len:]
         slot_data = self.bits_to_int(slot_bits)
-        slot_text = self.int_to_nibble_text(slot_data, slot_len)
-        self.putx(slot_ss, slot_es, [Ann.SLOT_IN_TAG + slot_idx, [slot_text]])
         self.frame_slot_data_in.append(slot_data)
         slot_data_in = slot_data
 
-        self.handle_slot(slot_idx, slot_ss, slot_es, slot_data_out, slot_data_in)
+        # Emit simple annotations for the integer values, until upper
+        # layer decode stages will be implemented.
+        slot_len = have_len - prev_len
+        slot_ss = self.frame_ss_list[prev_len]
+        slot_es = self.frame_ss_list[have_len]
+        slot_text = self.int_to_nibble_text(slot_data_out, slot_len)
+        self.putx(slot_ss, slot_es, Ann.SLOT_OUT_RAW, [slot_text])
+        slot_text = self.int_to_nibble_text(slot_data_in, slot_len)
+        self.putx(slot_ss, slot_es, Ann.SLOT_IN_RAW, [slot_text])
+
+        self.handle_slot(slot_idx, slot_data_out, slot_data_in)
 
     def decode(self):
         have_reset = self.has_channel(Pins.RESET)
