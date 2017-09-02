@@ -182,9 +182,9 @@ class Decoder(srd.Decoder):
         text = "{{:0{:d}x}}".format(digits).format(value)
         return text
 
-    def start_frame(self):
+    def start_frame(self, ss):
         """Mark the start of a frame."""
-        self.frame_ss_list = [ self.samplenum, ]
+        self.frame_ss_list = [ ss, ]
         self.frame_bits_out = []
         self.frame_bits_in = []
         self.frame_slot_data_out = []
@@ -246,25 +246,18 @@ class Decoder(srd.Decoder):
     def decode(self):
         have_reset = self.has_channel(Pins.RESET)
 
-        # Data bits get sampled at falling BIT_CLK edges. Data bits need
-        # to span the period between rising clock edges in annotations.
-        # A frame starts when SYNC is high at the rising(!) edge of the
-        # bit clock, and wasn't the last time it got sampled. This is
-        # why this implementation:
-        # - initially waits for the rising bit clock, and samples SYNC
-        # - then waits for the falling bit clock, samples DATA levels,
-        #   waits for the rising bit clock, samples SYNC, detects the
-        #   start of a frame, and processes the bits just received
-        # - keeps repeating that second step until the end of the input
-        sync_pins = self.wait({Pins.BIT_CLK: 'r'})
-        prev_sync = [0, sync_pins[Pins.SYNC]]
+        # Data is sampled at falling CLK edges. Annotations need to span
+        # the period between rising edges. SYNC rises one cycle _before_
+        # the start of a frame.
+        self.wait({Pins.BIT_CLK: 'r'})
+        prev_sync = [None, None, None]
         prev_snum = self.samplenum
         while True:
-            data_pins = self.wait({Pins.BIT_CLK: 'f'})
-            sync_pins = self.wait({Pins.BIT_CLK: 'r'})
-            prev_sync = [prev_sync[1], sync_pins[Pins.SYNC]]
+            pins = self.wait({Pins.BIT_CLK: 'f'})
+            prev_sync = [prev_sync[1], prev_sync[2], pins[Pins.SYNC]]
+            self.wait({Pins.BIT_CLK: 'r'})
             if prev_sync[0] == 0 and prev_sync[1] == 1:
-                self.start_frame()
+                self.start_frame(prev_snum)
             self.handle_bits(prev_snum, self.samplenum,
-                    data_pins[Pins.DATA_OUT], data_pins[Pins.DATA_IN])
+                    pins[Pins.DATA_OUT], pins[Pins.DATA_IN])
             prev_snum = self.samplenum
