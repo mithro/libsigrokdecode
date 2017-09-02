@@ -23,6 +23,14 @@
 #   referred to SDO, SDI, CLK, and SYNC.
 # - Support the optional RESET pin, detect cold and warm reset.
 # - Split slot values into bit fields, emit respective annotations.
+# - Split slot values into audio samples of their respective width and
+#   frequency (either on user provided parameters, or from inspection of
+#   decoded register access).
+# - Factor out common code to reduce redundancy:
+#   - Reserved bit/bits checks, associated warnings when not zero.
+# - Emit annotations for reserved bits only when they are non-zero? To
+#   reduce clutter in the bit field rows, and make non-reserved fields
+#   stand out more prominently?
 #
 # Implementor's notes:
 # $ cd .../sigrok-dumps
@@ -164,6 +172,8 @@ class Decoder(srd.Decoder):
         self.frame_total_bits = 256
         self.handle_slots = {
             0: self.handle_slot_00,
+            1: self.handle_slot_01,
+            2: self.handle_slot_02,
         }
 
     def start(self):
@@ -258,17 +268,103 @@ class Decoder(srd.Decoder):
             self.putf(slotpos + fieldoff, fieldlen, Ann.ERROR, text)
         fieldoff += fieldlen
 
+        # TODO Will input slot 0 have a Codec ID, or 3 reserved bits?
         fieldlen = 2
         codec = self.get_bit_field(data, bitcount, fieldoff, fieldlen)
         text = [ 'CODEC: {:1x}'.format(codec), '{:1x}'.format(codec), ]
         self.putf(slotpos + fieldoff, fieldlen, anncls, text)
         fieldoff += fieldlen
 
+    def handle_slot_01(self, slotidx, bitidx, bitcount, is_out, data):
+        """Handle slot 1, command/status address."""
+        slotpos = self.frame_slot_lens[slotidx]
+        if not self.have_slots[is_out]:
+            return
+        if not self.have_slots[is_out][slotidx]:
+            return
+        fieldoff = 0
+        anncls = Ann.SLOT_OUT_TAG if is_out else Ann.SLOT_IN_TAG
+        anncls += slotidx
+
+        fieldlen = 1
+        if is_out:
+            is_read = self.get_bit_field(data, bitcount, fieldoff, fieldlen)
+            text = [ 'READ', 'RD', 'R', ] if is_read else [ 'WRITE', 'WR', 'W', ]
+            self.putf(slotpos + fieldoff, fieldlen, anncls, text)
+            # TODO Check for the "atomic" constraint? Some operations
+            # involve address _and_ data, which cannot be spread across
+            # several frames. Slot 0 and 1 _must_ be provided within the
+            # same frame.
+        else:
+            rsv = self.get_bit_field(data, bitcount, fieldoff, fieldlen)
+            if rsv == 0:
+                text = [ 'RSV: 0', 'RSV', '0', ]
+                self.putf(slotpos + fieldoff, fieldlen, anncls, text)
+            else:
+                text = [ 'rsv: 1', 'rsv', '1', ]
+                self.putf(slotpos + fieldoff, fieldlen, anncls, text)
+                text = [ 'reserved bit error', 'rsv error', 'rsv', ]
+                self.putf(slotpos + fieldoff, fieldlen, Ann.ERROR, text)
+        fieldoff += fieldlen
+
+        fieldlen = 7
+        regaddr = self.get_bit_field(data, bitcount, fieldoff, fieldlen)
+        # TODO Present 0-63 or 0-126 as the address of the 16bit register?
+        # Check for even address, warn when odd? Print in hex or dec?
+        text = [ 'REG: {:2x}'.format(regaddr), '{:2x}'.format(regaddr), ]
+        self.putf(slotpos + fieldoff, fieldlen, anncls, text)
+        fieldoff += fieldlen
+
+        fieldlen = 12
+        # TODO These 12 bits are reserved for output, but have a meaning
+        # for input. The first 10 bits request output data in the next
+        # frame for slots 3-12 (low active). The last 2 bits are reserved.
+        rsv = self.get_bit_field(data, bitcount, fieldoff, fieldlen)
+        if rsv == 0:
+            text = [ 'RSV: 0', 'RSV', '0', ]
+            self.putf(slotpos + fieldoff, fieldlen, anncls, text)
+        else:
+            text = [ 'rsv: {:03x}'.format(rsv), '{:03x}'.format(rsv), ]
+            self.putf(slotpos + fieldoff, fieldlen, anncls, text)
+            text = [ 'reserved bits error', 'rsv error', 'rsv', ]
+            self.putf(slotpos + fieldoff, fieldlen, Ann.ERROR, text)
+        fieldoff += fieldlen
+
+    def handle_slot_02(self, slotidx, bitidx, bitcount, is_out, data):
+        """Handle slot 2, command/status data."""
+        slotpos = self.frame_slot_lens[slotidx]
+        if not self.have_slots[is_out]:
+            return
+        if not self.have_slots[is_out][slotidx]:
+            return
+        fieldoff = 0
+        anncls = Ann.SLOT_OUT_TAG if is_out else Ann.SLOT_IN_TAG
+        anncls += slotidx
+
+        fieldlen = 16
+        rwdata = self.get_bit_field(data, bitcount, fieldoff, fieldlen)
+        # TODO Check for zero when operation is a read.
+        text = [ 'DATA: {:4x}'.format(rwdata), '{:4x}'.format(rwdata), ]
+        self.putf(slotpos + fieldoff, fieldlen, anncls, text)
+        fieldoff += fieldlen
+
+        fieldlen = 4
+        rsv = self.get_bit_field(data, bitcount, fieldoff, fieldlen)
+        if rsv == 0:
+            text = [ 'RSV: 0', 'RSV', '0', ]
+            self.putf(slotpos + fieldoff, fieldlen, anncls, text)
+        else:
+            text = [ 'rsv: {:01x}'.format(rsv), '{:01x}'.format(rsv), ]
+            self.putf(slotpos + fieldoff, fieldlen, anncls, text)
+            text = [ 'reserved bits error', 'rsv error', 'rsv', ]
+            self.putf(slotpos + fieldoff, fieldlen, Ann.ERROR, text)
+        fieldoff += fieldlen
+
     # TODO implement other slots
-    # - 1: cmd/status addr
-    # - 2: cmd/status data
+    # - 1: cmd/status addr (check status vs command)
+    # - 2: cmd/status data (check status vs command)
     # - 3-11: audio out/in
-    # - 12: io control/status
+    # - 12: io control/status (modem GPIO(?))
 
     def handle_slot(self, slotidx, data_out, data_in):
         """Process a received slot of a frame."""
