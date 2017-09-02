@@ -23,6 +23,11 @@
 #   referred to SDO, SDI, CLK, and SYNC.
 # - Support the optional RESET pin, detect cold and warm reset.
 # - Split slot values into bit fields, emit respective annotations.
+#
+# Implementor's notes:
+# $ cd .../sigrok-dumps
+# $ env SIGROKDECODE_DIR=../libsigrokdecode/decoders pulseview -i ac97-data.srzip -l 4
+# $ env SIGROKDECODE_DIR=../libsigrokdecode/decoders sigrok-cli -i ac97-data.srzip -l 4 -P ac97:out=SDO:in=SDI:clk=BIT_CLK:sync=SYNC
 
 import sigrokdecode as srd
 
