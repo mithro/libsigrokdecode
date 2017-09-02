@@ -102,6 +102,11 @@ class Decoder(srd.Decoder):
         ('slot-in-10', 'Input slot 10'),
         ('slot-in-11', 'Input slot 11'),
         ('slot-in-io-sts', 'Input I/O status'),
+        # TODO add more annotation classes:
+        # TAG: 'ready', 'valid', 'id', 'rsv'
+        # CMD ADDR: 'r/w', 'addr', 'unused'
+        # CMD DATA: 'data', 'unused'
+        # 3-11: 'data', 'unused', 'double data'
         ('warn', 'Warnings'),
         ('err', 'Errors'),
     )
@@ -123,11 +128,17 @@ class Decoder(srd.Decoder):
     )
     binary = (
         # EMPTY
+        # TODO which binary classes to implement?
+        # - raw bits? 256 bits of a frame, in/out
+        # - audio bits? 20bit per slot, in 24bit units? 3-11 or 1-12?
+        #   filtered by TAG bits or all observed? in/out
     )
 
     def putx(self, ss, es, data):
         """Put a (graphical) annotation."""
         self.put(ss, es, self.out_ann, data)
+
+    # TODO Put Python and binary annotations.
 
     def __init__(self):
         self.reset()
@@ -138,6 +149,8 @@ class Decoder(srd.Decoder):
         self.frame_total_bits = 256
 
     def start(self):
+        # TODO self.out_python = self.register(srd.OUTPUT_PYTHON)
+        # TODO self.out_binary = self.register(srd.OUTPUT_BINARY)
         self.out_ann = self.register(srd.OUTPUT_ANN)
 
     def metadata(self, key, value):
