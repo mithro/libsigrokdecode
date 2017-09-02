@@ -167,7 +167,13 @@ class Decoder(srd.Decoder):
         if not bits:
             return 0
         count = len(bits)
-        value = sum([2 ** (count - 1 - i) for i in range(count) if bits[i]])
+        if False:
+            # Expensive(?) bits to text to int conversion.
+            text = "".join(["{:d}".format(bits[idx]) for idx in range(count)])
+            value = int("0b{}".format(text), 2)
+        else:
+            # Less expensive(?) sum of power-of-two per 1-bit in a position.
+            value = sum([2 ** (count - 1 - i) for i in range(count) if bits[i]])
         return value
 
     def int_to_nibble_text(self, value, bitcount):
