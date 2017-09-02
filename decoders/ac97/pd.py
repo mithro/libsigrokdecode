@@ -248,16 +248,22 @@ class Decoder(srd.Decoder):
 
         # Data is sampled at falling CLK edges. Annotations need to span
         # the period between rising edges. SYNC rises one cycle _before_
-        # the start of a frame.
-        self.wait({Pins.BIT_CLK: 'r'})
+        # the start of a frame. Grab the earliest SYNC sample we can get
+        # and advance to the start of a bit time. Then keep getting the
+        # samples and the end of all subsequent bit times.
         prev_sync = [None, None, None]
-        prev_snum = self.samplenum
+        pins = self.wait({Pins.BIT_CLK: 'e'})
+        if pins[Pins.BIT_CLK] == 0:
+            prev_sync[-1] = pins[Pins.SYNC]
+            pins = self.wait({Pins.BIT_CLK: 'r'})
+        bit_ss = self.samplenum
         while True:
             pins = self.wait({Pins.BIT_CLK: 'f'})
-            prev_sync = [prev_sync[1], prev_sync[2], pins[Pins.SYNC]]
+            prev_sync.pop(0)
+            prev_sync.append(pins[Pins.SYNC])
             self.wait({Pins.BIT_CLK: 'r'})
             if prev_sync[0] == 0 and prev_sync[1] == 1:
-                self.start_frame(prev_snum)
-            self.handle_bits(prev_snum, self.samplenum,
+                self.start_frame(bit_ss)
+            self.handle_bits(bit_ss, self.samplenum,
                     pins[Pins.DATA_OUT], pins[Pins.DATA_IN])
-            prev_snum = self.samplenum
+            bit_ss = self.samplenum
