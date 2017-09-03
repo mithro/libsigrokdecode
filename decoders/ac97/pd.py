@@ -261,7 +261,7 @@ class Decoder(srd.Decoder):
         if self.frame_ss_list:
             # Flush bits if we had a frame before the new one.
             self.flush_frame_bits()
-        self.frame_ss_list = [ ss, ]
+        self.frame_ss_list = [ss]
         self.frame_bits_out = []
         self.frame_bits_in = []
         self.frame_slot_data_out = []
@@ -305,15 +305,15 @@ class Decoder(srd.Decoder):
 
         fieldlen = 1
         ready = self.get_bit_field(data, bitcount, fieldoff, fieldlen)
-        text = [ 'READY: 1', 'READY', 'RDY', 'R', ] if ready else [ 'ready: 0', 'rdy', '-', ]
+        text = ['READY: 1', 'READY', 'RDY', 'R'] if ready else ['ready: 0', 'rdy', '-']
         self.putf(slotpos + fieldoff, fieldlen, anncls, text)
         fieldoff += fieldlen
 
         fieldlen = 12
         valid = self.get_bit_field(data, bitcount, fieldoff, fieldlen)
-        text = [ 'VALID: {:3x}'.format(valid), '{:3x}'.format(valid), ]
+        text = ['VALID: {:3x}'.format(valid), '{:3x}'.format(valid)]
         self.putf(slotpos + fieldoff, fieldlen, anncls, text)
-        have_slots = [ True, ] + [ False, ] * 12
+        have_slots = [True] + [False] * 12
         for idx in range(12):
             have_slots[idx + 1] = bool(valid & (1 << (11 - idx)))
         self.have_slots[is_out] = have_slots
@@ -322,19 +322,19 @@ class Decoder(srd.Decoder):
         fieldlen = 1
         rsv = self.get_bit_field(data, bitcount, fieldoff, fieldlen)
         if rsv == 0:
-            text = [ 'RSV: 0', 'RSV', '0', ]
+            text = ['RSV: 0', 'RSV', '0']
             self.putf(slotpos + fieldoff, fieldlen, anncls, text)
         else:
-            text = [ 'rsv: 1', 'rsv', '1', ]
+            text = ['rsv: 1', 'rsv', '1']
             self.putf(slotpos + fieldoff, fieldlen, anncls, text)
-            text = [ 'reserved bit error', 'rsv error', 'rsv', ]
+            text = ['reserved bit error', 'rsv error', 'rsv']
             self.putf(slotpos + fieldoff, fieldlen, Ann.ERROR, text)
         fieldoff += fieldlen
 
         # TODO Will input slot 0 have a Codec ID, or 3 reserved bits?
         fieldlen = 2
         codec = self.get_bit_field(data, bitcount, fieldoff, fieldlen)
-        text = [ 'CODEC: {:1x}'.format(codec), '{:1x}'.format(codec), ]
+        text = ['CODEC: {:1x}'.format(codec), '{:1x}'.format(codec)]
         self.putf(slotpos + fieldoff, fieldlen, anncls, text)
         fieldoff += fieldlen
 
@@ -352,7 +352,7 @@ class Decoder(srd.Decoder):
         fieldlen = 1
         if is_out:
             is_read = self.get_bit_field(data, bitcount, fieldoff, fieldlen)
-            text = [ 'READ', 'RD', 'R', ] if is_read else [ 'WRITE', 'WR', 'W', ]
+            text = ['READ', 'RD', 'R'] if is_read else ['WRITE', 'WR', 'W']
             self.putf(slotpos + fieldoff, fieldlen, anncls, text)
             # TODO Check for the "atomic" constraint? Some operations
             # involve address _and_ data, which cannot be spread across
@@ -361,12 +361,12 @@ class Decoder(srd.Decoder):
         else:
             rsv = self.get_bit_field(data, bitcount, fieldoff, fieldlen)
             if rsv == 0:
-                text = [ 'RSV: 0', 'RSV', '0', ]
+                text = ['RSV: 0', 'RSV', '0']
                 self.putf(slotpos + fieldoff, fieldlen, anncls, text)
             else:
-                text = [ 'rsv: 1', 'rsv', '1', ]
+                text = ['rsv: 1', 'rsv', '1']
                 self.putf(slotpos + fieldoff, fieldlen, anncls, text)
-                text = [ 'reserved bit error', 'rsv error', 'rsv', ]
+                text = ['reserved bit error', 'rsv error', 'rsv']
                 self.putf(slotpos + fieldoff, fieldlen, Ann.ERROR, text)
         fieldoff += fieldlen
 
@@ -374,7 +374,7 @@ class Decoder(srd.Decoder):
         regaddr = self.get_bit_field(data, bitcount, fieldoff, fieldlen)
         # TODO Present 0-63 or 0-126 as the address of the 16bit register?
         # Check for even address, warn when odd? Print in hex or dec?
-        text = [ 'REG: {:2x}'.format(regaddr), '{:2x}'.format(regaddr), ]
+        text = ['REG: {:2x}'.format(regaddr), '{:2x}'.format(regaddr)]
         self.putf(slotpos + fieldoff, fieldlen, anncls, text)
         fieldoff += fieldlen
 
@@ -384,12 +384,12 @@ class Decoder(srd.Decoder):
         # frame for slots 3-12 (low active). The last 2 bits are reserved.
         rsv = self.get_bit_field(data, bitcount, fieldoff, fieldlen)
         if rsv == 0:
-            text = [ 'RSV: 0', 'RSV', '0', ]
+            text = ['RSV: 0', 'RSV', '0']
             self.putf(slotpos + fieldoff, fieldlen, anncls, text)
         else:
-            text = [ 'rsv: {:03x}'.format(rsv), '{:03x}'.format(rsv), ]
+            text = ['rsv: {:03x}'.format(rsv), '{:03x}'.format(rsv)]
             self.putf(slotpos + fieldoff, fieldlen, anncls, text)
-            text = [ 'reserved bits error', 'rsv error', 'rsv', ]
+            text = ['reserved bits error', 'rsv error', 'rsv']
             self.putf(slotpos + fieldoff, fieldlen, Ann.ERROR, text)
         fieldoff += fieldlen
 
@@ -407,19 +407,19 @@ class Decoder(srd.Decoder):
         fieldlen = 16
         rwdata = self.get_bit_field(data, bitcount, fieldoff, fieldlen)
         # TODO Check for zero when operation is a read.
-        text = [ 'DATA: {:4x}'.format(rwdata), '{:4x}'.format(rwdata), ]
+        text = ['DATA: {:4x}'.format(rwdata), '{:4x}'.format(rwdata)]
         self.putf(slotpos + fieldoff, fieldlen, anncls, text)
         fieldoff += fieldlen
 
         fieldlen = 4
         rsv = self.get_bit_field(data, bitcount, fieldoff, fieldlen)
         if rsv == 0:
-            text = [ 'RSV: 0', 'RSV', '0', ]
+            text = ['RSV: 0', 'RSV', '0']
             self.putf(slotpos + fieldoff, fieldlen, anncls, text)
         else:
-            text = [ 'rsv: {:01x}'.format(rsv), '{:01x}'.format(rsv), ]
+            text = ['rsv: {:01x}'.format(rsv), '{:01x}'.format(rsv)]
             self.putf(slotpos + fieldoff, fieldlen, anncls, text)
-            text = [ 'reserved bits error', 'rsv error', 'rsv', ]
+            text = ['reserved bits error', 'rsv error', 'rsv']
             self.putf(slotpos + fieldoff, fieldlen, Ann.ERROR, text)
         fieldoff += fieldlen
 
