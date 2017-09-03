@@ -36,6 +36,7 @@
 # $ cd .../sigrok-dumps
 # $ env SIGROKDECODE_DIR=../libsigrokdecode/decoders pulseview -i ac97-data.srzip -l 4
 # $ env SIGROKDECODE_DIR=../libsigrokdecode/decoders sigrok-cli -i ac97-data.srzip -l 4 -P ac97:out=SDO:in=SDI:clk=BIT_CLK:sync=SYNC
+# $ env SIGROKDECODE_DIR=../libsigrokdecode/decoders sigrok-cli -i ac97/realtek_alc655/asus_a8ne_fm_s_ac97_powerup_snippet.sr -P ac97:out=SDATA-OUT:in=SDATA-IN:clk=BIT-CLK:sync=SYNC -B ac97=slot-raw-in | hexdump -Cv | less
 
 import sigrokdecode as srd
 
@@ -64,6 +65,12 @@ class Ann:
         SLOT_IN_11, SLOT_IN_IO,
         WARN, ERROR,
     ) = range(32)
+    (
+        BIN_FRAME_OUT,
+        BIN_FRAME_IN,
+        BIN_SLOT_RAW_OUT,
+        BIN_SLOT_RAW_IN,
+    ) = range(4)
 
 class Decoder(srd.Decoder):
     api_version = 3
@@ -144,6 +151,10 @@ class Decoder(srd.Decoder):
         ('err', 'Errors', (Ann.ERROR,)),
     )
     binary = (
+        ('frame-out', 'Frame bits, output data'),
+        ('frame-in', 'Frame bits, input data'),
+        ('slot-raw-out', 'Raw slot bits, output data'),
+        ('slot-raw-in', 'Raw slot bits, input data'),
         # EMPTY
         # TODO which binary classes to implement?
         # - raw bits? 256 bits of a frame, in/out
@@ -160,6 +171,12 @@ class Decoder(srd.Decoder):
         ss = self.frame_ss_list[frombit]
         es = self.frame_ss_list[frombit + bitcount]
         self.putx(ss, es, cls, data)
+
+    def putb(self, frombit, bitcount, cls, data):
+        """Put a binary annotation for a frame's bit field."""
+        ss = self.frame_ss_list[frombit]
+        es = self.frame_ss_list[frombit + bitcount]
+        self.put(ss, es, self.out_binary, [cls, data])
 
     # TODO Put Python and binary annotations.
 
@@ -178,7 +195,7 @@ class Decoder(srd.Decoder):
 
     def start(self):
         # TODO self.out_python = self.register(srd.OUTPUT_PYTHON)
-        # TODO self.out_binary = self.register(srd.OUTPUT_BINARY)
+        self.out_binary = self.register(srd.OUTPUT_BINARY)
         self.out_ann = self.register(srd.OUTPUT_ANN)
 
     def metadata(self, key, value):
@@ -199,6 +216,18 @@ class Decoder(srd.Decoder):
             value = sum([2 ** (count - 1 - i) for i in range(count) if bits[i]])
         return value
 
+    def bits_to_bin_ann(self, bits):
+        """Convert MSB-first bit sequence to binary annotation data."""
+        out = []
+        count = len(bits)
+        while count > 0:
+            count -= 8
+            by, bits = bits[:8], bits[8:]
+            by = self.bits_to_int(by)
+            out.append(by)
+        out = bytes(out)
+        return out
+
     def int_to_nibble_text(self, value, bitcount):
         """Convert number to hex digits for given bit count."""
         digits = (bitcount + 3) // 4
@@ -212,8 +241,26 @@ class Decoder(srd.Decoder):
         data &= mask
         return data
 
+    def flush_frame_bits(self):
+        """Flush raw frame bits to binary annotation."""
+
+        anncls = Ann.BIN_FRAME_OUT
+        data = self.frame_bits_out[:]
+        count = len(data)
+        data = self.bits_to_bin_ann(data)
+        self.putb(0, count, anncls, data)
+
+        anncls = Ann.BIN_FRAME_IN
+        data = self.frame_bits_in[:]
+        count = len(data)
+        data = self.bits_to_bin_ann(data)
+        self.putb(0, count, anncls, data)
+
     def start_frame(self, ss):
         """Mark the start of a frame."""
+        if self.frame_ss_list:
+            # Flush bits if we had a frame before the new one.
+            self.flush_frame_bits()
         self.frame_ss_list = [ ss, ]
         self.frame_bits_out = []
         self.frame_bits_in = []
@@ -226,13 +273,29 @@ class Decoder(srd.Decoder):
 
     def handle_slot_dummy(self, slotidx, bitidx, bitcount, is_out, data):
         """Handle slot x, default/fallback handler."""
+        # Only process data of slots 1-12 when slot 0 says "valid".
         if not self.have_slots[is_out]:
             return
         if not self.have_slots[is_out][slotidx]:
             return
-        text = self.int_to_nibble_text(data, bitcount);
+
+        # Emit a naive annotation with just the data bits that we saw
+        # for the slot (hex nibbles for density). For audio data this
+        # can be good enough. Slots with special meaning should not end
+        # up calling the dummy handler.
+        text = self.int_to_nibble_text(data, bitcount)
         anncls = Ann.SLOT_OUT_TAG if is_out else Ann.SLOT_IN_TAG
         self.putf(bitidx, bitcount, anncls + slotidx, [text])
+
+        # TODO Improve this hack that was added for evaluation. For now
+        # we just export the upper 16 bits of each audio channel that
+        # happens to be "valid". Which might be GoodEnough(TM) to get
+        # a (header-less) audio stream for typical setups where only
+        # line-in or line-out are in use.
+        anncls = Ann.BIN_SLOT_RAW_OUT if is_out else Ann.BIN_SLOT_RAW_IN
+        data_bin = data >> 4
+        data_bin = data_bin.to_bytes(2, byteorder = 'big')
+        self.putb(bitidx, bitcount, anncls, data_bin)
 
     def handle_slot_00(self, slotidx, bitidx, bitcount, is_out, data):
         """Handle slot 0, TAG."""
