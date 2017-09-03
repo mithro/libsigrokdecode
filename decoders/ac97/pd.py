@@ -94,8 +94,8 @@ class Decoder(srd.Decoder):
         # EMPTY
     )
     annotations = (
-        ('bits-out', 'Output bits'),
-        ('bits-in', 'Input bits'),
+        ('bit-out', 'Output bits'),
+        ('bit-in', 'Input bits'),
         ('slot-out-raw', 'Output raw value'),
         ('slot-out-tag', 'Output TAG'),
         ('slot-out-cmd-addr', 'Output command address'),
@@ -129,8 +129,8 @@ class Decoder(srd.Decoder):
         # CMD ADDR: 'r/w', 'addr', 'unused'
         # CMD DATA: 'data', 'unused'
         # 3-11: 'data', 'unused', 'double data'
-        ('warn', 'Warnings'),
-        ('err', 'Errors'),
+        ('warning', 'Warnings'),
+        ('error', 'Errors'),
     )
     annotation_rows = (
         ('bits-out', 'Output bits', (Ann.BITS_OUT,)),
@@ -147,8 +147,8 @@ class Decoder(srd.Decoder):
             Ann.SLOT_IN_03, Ann.SLOT_IN_04, Ann.SLOT_IN_05, Ann.SLOT_IN_06,
             Ann.SLOT_IN_07, Ann.SLOT_IN_08, Ann.SLOT_IN_09, Ann.SLOT_IN_10,
             Ann.SLOT_IN_11, Ann.SLOT_IN_IO,)),
-        ('warn', 'Warnings', (Ann.WARN,)),
-        ('err', 'Errors', (Ann.ERROR,)),
+        ('warnings', 'Warnings', (Ann.WARN,)),
+        ('errors', 'Errors', (Ann.ERROR,)),
     )
     binary = (
         ('frame-out', 'Frame bits, output data'),
