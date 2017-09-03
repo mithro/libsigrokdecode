@@ -163,17 +163,17 @@ class Decoder(srd.Decoder):
     )
 
     def putx(self, ss, es, cls, data):
-        """Put a (graphical) annotation."""
+        '''Put a (graphical) annotation.'''
         self.put(ss, es, self.out_ann, [cls, data])
 
     def putf(self, frombit, bitcount, cls, data):
-        """Put a (graphical) annotation for a frame's bit field."""
+        '''Put a (graphical) annotation for a frame's bit field.'''
         ss = self.frame_ss_list[frombit]
         es = self.frame_ss_list[frombit + bitcount]
         self.putx(ss, es, cls, data)
 
     def putb(self, frombit, bitcount, cls, data):
-        """Put a binary annotation for a frame's bit field."""
+        '''Put a binary annotation for a frame's bit field.'''
         ss = self.frame_ss_list[frombit]
         es = self.frame_ss_list[frombit + bitcount]
         self.put(ss, es, self.out_binary, [cls, data])
@@ -203,21 +203,21 @@ class Decoder(srd.Decoder):
             self.samplerate = value
 
     def bits_to_int(self, bits):
-        """Convert MSB-first bit sequence to integer value."""
+        '''Convert MSB-first bit sequence to integer value.'''
         if not bits:
             return 0
         count = len(bits)
         if False:
             # Expensive(?) bits to text to int conversion.
-            text = "".join(["{:d}".format(bits[idx]) for idx in range(count)])
-            value = int("0b{}".format(text), 2)
+            text = ''.join(['{:d}'.format(bits[idx]) for idx in range(count)])
+            value = int('0b{}'.format(text), 2)
         else:
             # Less expensive(?) sum of power-of-two per 1-bit in a position.
             value = sum([2 ** (count - 1 - i) for i in range(count) if bits[i]])
         return value
 
     def bits_to_bin_ann(self, bits):
-        """Convert MSB-first bit sequence to binary annotation data."""
+        '''Convert MSB-first bit sequence to binary annotation data.'''
         out = []
         count = len(bits)
         while count > 0:
@@ -229,9 +229,9 @@ class Decoder(srd.Decoder):
         return out
 
     def int_to_nibble_text(self, value, bitcount):
-        """Convert number to hex digits for given bit count."""
+        '''Convert number to hex digits for given bit count.'''
         digits = (bitcount + 3) // 4
-        text = "{{:0{:d}x}}".format(digits).format(value)
+        text = '{{:0{:d}x}}'.format(digits).format(value)
         return text
 
     def get_bit_field(self, data, size, off, count):
@@ -242,7 +242,7 @@ class Decoder(srd.Decoder):
         return data
 
     def flush_frame_bits(self):
-        """Flush raw frame bits to binary annotation."""
+        '''Flush raw frame bits to binary annotation.'''
 
         anncls = Ann.BIN_FRAME_OUT
         data = self.frame_bits_out[:]
@@ -257,7 +257,7 @@ class Decoder(srd.Decoder):
         self.putb(0, count, anncls, data)
 
     def start_frame(self, ss):
-        """Mark the start of a frame."""
+        '''Mark the start of a frame.'''
         if self.frame_ss_list:
             # Flush bits if we had a frame before the new one.
             self.flush_frame_bits()
@@ -272,7 +272,7 @@ class Decoder(srd.Decoder):
         }
 
     def handle_slot_dummy(self, slotidx, bitidx, bitcount, is_out, data):
-        """Handle slot x, default/fallback handler."""
+        '''Handle slot x, default/fallback handler.'''
         # Only process data of slots 1-12 when slot 0 says "valid".
         if not self.have_slots[is_out]:
             return
@@ -298,7 +298,7 @@ class Decoder(srd.Decoder):
         self.putb(bitidx, bitcount, anncls, data_bin)
 
     def handle_slot_00(self, slotidx, bitidx, bitcount, is_out, data):
-        """Handle slot 0, TAG."""
+        '''Handle slot 0, TAG.'''
         slotpos = self.frame_slot_lens[slotidx]
         fieldoff = 0
         anncls = Ann.SLOT_OUT_TAG if is_out else Ann.SLOT_IN_TAG
@@ -339,7 +339,7 @@ class Decoder(srd.Decoder):
         fieldoff += fieldlen
 
     def handle_slot_01(self, slotidx, bitidx, bitcount, is_out, data):
-        """Handle slot 1, command/status address."""
+        '''Handle slot 1, command/status address.'''
         slotpos = self.frame_slot_lens[slotidx]
         if not self.have_slots[is_out]:
             return
@@ -394,7 +394,7 @@ class Decoder(srd.Decoder):
         fieldoff += fieldlen
 
     def handle_slot_02(self, slotidx, bitidx, bitcount, is_out, data):
-        """Handle slot 2, command/status data."""
+        '''Handle slot 2, command/status data.'''
         slotpos = self.frame_slot_lens[slotidx]
         if not self.have_slots[is_out]:
             return
@@ -430,7 +430,7 @@ class Decoder(srd.Decoder):
     # - 12: io control/status (modem GPIO(?))
 
     def handle_slot(self, slotidx, data_out, data_in):
-        """Process a received slot of a frame."""
+        '''Process a received slot of a frame.'''
         func = self.handle_slots.get(slotidx, self.handle_slot_dummy)
         bitidx = self.frame_slot_lens[slotidx]
         bitcount = self.frame_slot_lens[slotidx + 1] - bitidx
@@ -439,13 +439,13 @@ class Decoder(srd.Decoder):
         return
 
     def handle_bits(self, ss, es, bit_out, bit_in):
-        """Process a received pair of bits."""
+        '''Process a received pair of bits.'''
 
         # Emit the bits' annotations. Only interpret the data when we
         # are in a frame (have seen the start of the frame, and don't
         # exceed the expected number of bits in a frame).
-        self.putx(ss, es, Ann.BITS_OUT, ["{:d}".format(bit_out)])
-        self.putx(ss, es, Ann.BITS_IN, ["{:d}".format(bit_in)])
+        self.putx(ss, es, Ann.BITS_OUT, ['{:d}'.format(bit_out)])
+        self.putx(ss, es, Ann.BITS_IN, ['{:d}'.format(bit_in)])
         if self.frame_ss_list is None:
             return
         if len(self.frame_bits_out) >= self.frame_total_bits:
